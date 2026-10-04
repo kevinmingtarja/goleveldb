@@ -2,7 +2,10 @@
 package skl
 
 import (
+	"math/rand/v2"
 	"sync/atomic"
+
+	"github.com/kevinmingtarja/goleveldb/internal/assert"
 )
 
 const (
@@ -13,7 +16,7 @@ const (
 type node struct {
 	key   []byte
 	value []byte
-	next  [maxHeight]*node
+	next  [maxHeight]atomic.Pointer[node]
 }
 
 type Skiplist struct {
@@ -47,7 +50,7 @@ func (s *Skiplist) findGreaterOrEqual(key []byte, prev []*node) *node {
 	level := s.getHeight() - 1
 	x := s.head
 	for {
-		next := x.next[level]
+		next := x.next[level].Load()
 		if next != nil && s.compare(key, next.key) > 0 {
 			// key is greater, keep searching in the same level
 			x = next
@@ -63,5 +66,37 @@ func (s *Skiplist) findGreaterOrEqual(key []byte, prev []*node) *node {
 				level--
 			}
 		}
+	}
+}
+
+func (s *Skiplist) randomHeight() int {
+	const kBranching = 4
+	height := 1
+	// Increase height with probability 1 in kBranching
+	for height < maxHeight && rand.IntN(kBranching) == 0 {
+		height++
+	}
+	return height
+}
+
+func (s *Skiplist) Put(key, value []byte) {
+	var prev [maxHeight]*node
+	x := s.findGreaterOrEqual(key, prev[:])
+
+	// We don't allow duplicate insertions.
+	assert.True(x == nil || s.compare(key, x.key) != 0)
+
+	height := s.randomHeight()
+	if height > int(s.getHeight()) {
+		for i := int(s.getHeight()); i < height; i++ {
+			prev[i] = s.head
+		}
+		s.height.Store(int32(height))
+	}
+
+	x = newNode(key, value)
+	for i := range height {
+		x.next[i].Store(prev[i].next[i].Load())
+		prev[i].next[i].Store(x)
 	}
 }
