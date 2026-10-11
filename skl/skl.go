@@ -66,10 +66,48 @@ func (s *Skiplist) findGreaterOrEqual(key []byte, prev []*node) *node {
 			}
 			if level == 0 {
 				return next
-			} else {
-				// Go down next level
-				level--
 			}
+			// Go down next level
+			level--
+		}
+	}
+}
+
+// Return the latest node with a key < key,
+// or head if no such node exists.
+func (s *Skiplist) findLessThan(key []byte) *node {
+	level := s.getHeight() - 1
+	x := s.head
+	for {
+		assert.True(x == s.head || s.compare(x.key, key) < 0)
+		next := x.next[level].Load()
+		if next == nil || s.compare(key, next.key) <= 0 {
+			if level == 0 {
+				return x
+			}
+			// Go down next level
+			level--
+		} else {
+			x = next
+		}
+	}
+}
+
+// Return the last node in the list,
+// or head if list is empty.
+func (s *Skiplist) findLast() *node {
+	level := s.getHeight() - 1
+	x := s.head
+	for {
+		next := x.next[level].Load()
+		if next == nil {
+			if level == 0 {
+				return x
+			}
+			// Go down next level
+			level--
+		} else {
+			x = next
 		}
 	}
 }

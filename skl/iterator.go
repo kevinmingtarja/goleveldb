@@ -15,9 +15,24 @@ func (it *Iterator) SeekToFirst() {
 	it.nd = it.list.head.next[0].Load()
 }
 
+func (it *Iterator) SeekToLast() {
+	it.nd = it.list.findLast()
+	if it.nd == it.list.head {
+		it.nd = nil
+	}
+}
+
 func (it *Iterator) Next() {
 	assert.True(it.Valid())
 	it.nd = it.nd.next[0].Load()
+}
+
+func (it *Iterator) Prev() {
+	assert.True(it.Valid())
+	it.nd = it.list.findLessThan(it.nd.key)
+	if it.nd == it.list.head {
+		it.nd = nil
+	}
 }
 
 func (it *Iterator) Valid() bool {
