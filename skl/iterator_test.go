@@ -2,8 +2,91 @@ package skl
 
 import (
 	"bytes"
+	"slices"
 	"testing"
+
+	"pgregory.net/rapid"
 )
+
+func TestIteratorProperties(t *testing.T) {
+	comparators := []struct {
+		name    string
+		compare func(a, b []byte) int
+	}{
+		{"ascending", bytes.Compare},
+		{"descending", func(a, b []byte) int { return -bytes.Compare(a, b) }},
+	}
+
+	for _, comparator := range comparators {
+		t.Run(comparator.name, func(t *testing.T) {
+			rapid.Check(t, func(t *rapid.T) {
+				keys := rapid.SliceOfN(rapid.String(), 0, 100).Draw(t, "keys")
+				targets := rapid.SliceOfN(rapid.String(), 1, 100).Draw(t, "targets")
+				s := NewSkipList(comparator.compare)
+				values := make(map[string]string)
+				var sorted []string
+				for _, key := range keys {
+					if _, exists := values[key]; exists {
+						continue
+					}
+					value := rapid.String().Draw(t, "value")
+					s.Put([]byte(key), []byte(value))
+					values[key] = value
+					sorted = append(sorted, key)
+				}
+				slices.SortFunc(sorted, func(a, b string) int {
+					return comparator.compare([]byte(a), []byte(b))
+				})
+
+				iter := s.NewIterator()
+				checkEntry := func(operation, key string) {
+					if !iter.Valid() {
+						t.Fatalf("%s: invalid iterator, want key %q", operation, key)
+					}
+					if got := string(iter.Key()); got != key {
+						t.Fatalf("%s: key = %q, want %q", operation, got, key)
+					}
+					if got, want := string(iter.Value()), values[key]; got != want {
+						t.Fatalf("%s: value for %q = %q, want %q", operation, key, got, want)
+					}
+				}
+
+				iter.SeekToFirst()
+				for _, key := range sorted {
+					checkEntry("forward", key)
+					iter.Next()
+				}
+				if iter.Valid() {
+					t.Fatal("forward: iterator remains valid after all entries")
+				}
+
+				iter.SeekToLast()
+				for _, s := range slices.Backward(sorted) {
+					checkEntry("reverse", s)
+					iter.Prev()
+				}
+				if iter.Valid() {
+					t.Fatal("reverse: iterator remains valid after all entries")
+				}
+
+				for _, target := range append(keys, targets...) {
+					index := 0
+					for index < len(sorted) && comparator.compare([]byte(sorted[index]), []byte(target)) < 0 {
+						index++
+					}
+					iter.Seek([]byte(target))
+					if index == len(sorted) {
+						if iter.Valid() {
+							t.Fatalf("Seek(%q): valid iterator, want invalid", target)
+						}
+					} else {
+						checkEntry("Seek("+target+")", sorted[index])
+					}
+				}
+			})
+		})
+	}
+}
 
 func newTestSkiplist(compare func(a, b []byte) int, keys []string) *Skiplist {
 	s := NewSkipList(compare)

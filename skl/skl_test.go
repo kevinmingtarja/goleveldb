@@ -3,7 +3,42 @@ package skl
 import (
 	"bytes"
 	"testing"
+
+	"pgregory.net/rapid"
 )
+
+func TestContainsProperty(t *testing.T) {
+	comparators := []struct {
+		name    string
+		compare func(a, b []byte) int
+	}{
+		{"ascending", bytes.Compare},
+		{"descending", func(a, b []byte) int { return -bytes.Compare(a, b) }},
+	}
+
+	for _, comparator := range comparators {
+		t.Run(comparator.name, func(t *testing.T) {
+			rapid.Check(t, func(t *rapid.T) {
+				keys := rapid.SliceOfN(rapid.String(), 0, 100).Draw(t, "keys")
+				targets := rapid.SliceOfN(rapid.String(), 1, 100).Draw(t, "targets")
+				s := NewSkipList(comparator.compare)
+				present := make(map[string]bool)
+				for _, key := range keys {
+					if !present[key] {
+						s.Put([]byte(key), nil)
+						present[key] = true
+					}
+				}
+
+				for _, target := range append(keys, targets...) {
+					if got, want := s.Contains([]byte(target)), present[target]; got != want {
+						t.Fatalf("Contains(%q) = %t, want %t", target, got, want)
+					}
+				}
+			})
+		})
+	}
+}
 
 func TestContains(t *testing.T) {
 	descending := func(a, b []byte) int {
