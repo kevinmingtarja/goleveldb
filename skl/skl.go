@@ -144,6 +144,11 @@ func (s *Skiplist) Put(key, value []byte) {
 	}
 }
 
+func (s *Skiplist) Contains(key []byte) bool {
+	nd := s.findGreaterOrEqual(key, nil)
+	return nd != nil && s.compare(key, nd.key) == 0
+}
+
 func (s *Skiplist) NewIterator() *Iterator {
 	return &Iterator{
 		list: s,
