@@ -2,6 +2,10 @@ package skl
 
 import (
 	"bytes"
+	"fmt"
+	"runtime"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"pgregory.net/rapid"
@@ -121,5 +125,88 @@ func TestPut(t *testing.T) {
 				t.Fatalf("length mismatch: %d and %d", i, len(tt.want))
 			}
 		})
+	}
+}
+
+func TestConcurrentReadersAndWriters(t *testing.T) {
+	const writers, readers, keysPerWriter = 4, 4, 500
+	s := NewSkipList(bytes.Compare)
+	var writeMu sync.Mutex
+	var completed [writers]atomic.Int32
+	var writerWG, readerWG sync.WaitGroup
+	start := make(chan struct{})
+	done := make(chan struct{})
+	keyFor := func(writer, index int) []byte {
+		return fmt.Appendf(nil, "%04d/%d", index, writer)
+	}
+
+	check := func() error {
+		for writer := range writers {
+			count := int(completed[writer].Load())
+			for i := range count {
+				key := keyFor(writer, i)
+				if !s.Contains(key) {
+					return fmt.Errorf("completed insertion %q is missing", key)
+				}
+			}
+		}
+
+		iter := s.NewIterator()
+		var previous []byte
+		count := 0
+		for iter.SeekToFirst(); iter.Valid(); iter.Next() {
+			if count >= writers*keysPerWriter {
+				return fmt.Errorf("iteration exceeded maximum entry count")
+			}
+			key := iter.Key()
+			if count > 0 && bytes.Compare(previous, key) >= 0 {
+				return fmt.Errorf("keys out of order: %q followed by %q", previous, key)
+			}
+			if got, want := string(iter.Value()), "value-"+string(key); got != want {
+				return fmt.Errorf("value for %q = %q, want %q", key, got, want)
+			}
+			previous = key
+			count++
+		}
+		return nil
+	}
+
+	for range readers {
+		readerWG.Go(func() {
+			<-start
+			for {
+				if err := check(); err != nil {
+					t.Error(err)
+					return
+				}
+				select {
+				case <-done:
+					return
+				default:
+					runtime.Gosched()
+				}
+			}
+		})
+	}
+	for writer := range writers {
+		writerWG.Go(func() {
+			<-start
+			for i := range keysPerWriter {
+				key := keyFor(writer, i)
+				writeMu.Lock()
+				s.Put(key, []byte("value-"+string(key)))
+				writeMu.Unlock()
+				completed[writer].Store(int32(i + 1))
+				runtime.Gosched()
+			}
+		})
+	}
+
+	close(start)
+	writerWG.Wait()
+	close(done)
+	readerWG.Wait()
+	if err := check(); err != nil {
+		t.Fatal(err)
 	}
 }
