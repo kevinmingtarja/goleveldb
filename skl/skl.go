@@ -46,6 +46,11 @@ func (s *Skiplist) getHeight() int32 {
 	return s.height.Load()
 }
 
+// Return the first node whose key is greater than or equal to key,
+// or nil if no such node exists.
+//
+// If prev is non-nil, fill prev[level] with pointer to
+// previous node at "level" for every level in [0..max_height-1].
 func (s *Skiplist) findGreaterOrEqual(key []byte, prev []*node) *node {
 	level := s.getHeight() - 1
 	x := s.head
@@ -98,5 +103,12 @@ func (s *Skiplist) Put(key, value []byte) {
 	for i := range height {
 		x.next[i].Store(prev[i].next[i].Load())
 		prev[i].next[i].Store(x)
+	}
+}
+
+func (s *Skiplist) NewIterator() *Iterator {
+	return &Iterator{
+		list: s,
+		nd:   s.head,
 	}
 }
