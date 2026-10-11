@@ -147,6 +147,5 @@ func (s *Skiplist) Put(key, value []byte) {
 func (s *Skiplist) NewIterator() *Iterator {
 	return &Iterator{
 		list: s,
-		nd:   s.head,
 	}
 }
